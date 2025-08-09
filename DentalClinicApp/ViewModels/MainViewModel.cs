@@ -2,20 +2,21 @@
 using DentalClinicApp.Models;
 using DentalClinicApp.Utils;
 using DentalClinicApp.Views;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Win32;
 using Serilog;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
 using System.IO;
-using System.Runtime.CompilerServices;
 using System.Windows.Input;
 
 namespace DentalClinicApp.ViewModels
 {
-    public class MainViewModel : INotifyPropertyChanged
+    class MainViewModel : BaseViewModel
     {
         private static readonly ILogger Logger = Log.ForContext<MainViewModel>();
+
+        private readonly PatientRepository _repo;
+        private readonly ImageService _imageService;
+
         public ObservableCollection<Patient> Patients { get; set; } = new();
         public ObservableCollection<PhotoViewModel> Photos { get; set; } = new();
 
@@ -26,10 +27,9 @@ namespace DentalClinicApp.ViewModels
             set
             {
                 if (SetProperty(ref _selectedPatient, value))
-                    LoadPhotos();
+                    _ = LoadPhotos();
             }
         }
-
 
         private string _newPatientName = "";
         public string NewPatientName
@@ -38,43 +38,51 @@ namespace DentalClinicApp.ViewModels
             set => SetProperty(ref _newPatientName, value);
         }
 
+        private string _statusText = "";
+        public string StatusText
+        {
+            get => _statusText;
+            set => SetProperty(ref _statusText, value);
+        }
+
+        private bool _hasConnection = false;
+        public bool HasConnection
+        {
+            get => _hasConnection;
+            set => SetProperty(ref _hasConnection, value);
+        }
+
         public ICommand AddPatientCommand { get; }
         public ICommand AddPhotoCommand { get; }
         public ICommand DropFilesCommand { get; }
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-        protected bool SetProperty<T>(ref T field, T value, [CallerMemberName] string? propName = null)
-        {
-            if (Equals(field, value)) return false;
-            field = value;
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propName));
-            return true;
-        }
-
-        private readonly AppDbContext _db;
-        private readonly ImageService _imageService;
-
         
-        public MainViewModel(AppDbContext db, ImageService imageService)
+        public MainViewModel(PatientRepository repo, ImageService imageService)
         {
-            _db = db;
+            _repo = repo;
             _imageService = imageService;
 
-            AddPatientCommand = new RelayCommand(AddPatient);
+            AddPatientCommand = new RelayCommand(async _ => await AddPatient());
             AddPhotoCommand = new RelayCommand(async _ => await SelectAndAddPhoto());
-            DropFilesCommand = new RelayCommand(async files => await AddDroppedFiles((string[])files));
-
-
-            LoadPatients();
+            DropFilesCommand = new RelayCommand(async files => await AddDroppedFiles(files));
         }
-        private void LoadPatients()
+
+        private async Task LoadPatients()
         {
             Patients.Clear();
-            foreach (var p in _db.Patients.Include(p => p.Photos))
-                Patients.Add(p);
+            try
+            {
+                foreach (var p in await _repo.GetAllPatients())
+                    Patients.Add(p);
+            }
+            catch (Exception ex)
+            {
+                HasConnection = false;
+                StatusText = "Ошибка при загрузке списка пациентов";
+                Logger.Error(ex, StatusText);
+            }
         }
 
-        private void LoadPhotos()
+        private async Task LoadPhotos()
         {
             Photos.Clear();
             if (_selectedPatient == null)
@@ -82,9 +90,7 @@ namespace DentalClinicApp.ViewModels
             Logger.Information($"Загрузка фотографий для пациента Id={_selectedPatient.Id} ({_selectedPatient.FullName})");
 
             var baseDir = _imageService.GetPatientImageDirectory(_selectedPatient.Id);
-            foreach (var p in _db.PatientPhotos
-                                 .Where(ph => ph.PatientId == _selectedPatient.Id)
-                                 .OrderByDescending(ph => ph.UploadedAt))
+            foreach (var p in await _repo.GetPhotosByPatientId(_selectedPatient.Id))
             {
                 var path = Path.Combine(baseDir, p.FileName);
                 if (File.Exists(path))
@@ -98,7 +104,7 @@ namespace DentalClinicApp.ViewModels
             }
         }
 
-        private void AddPatient(object? param)
+        private async Task AddPatient()
         {
             var dialog = new AddPatientDialog();
             var result = dialog.ShowDialog();
@@ -106,8 +112,7 @@ namespace DentalClinicApp.ViewModels
             if (result == true && !string.IsNullOrWhiteSpace(dialog.PatientName))
             {
                 var p = new Patient { FullName = dialog.PatientName };
-                _db.Patients.Add(p);
-                _db.SaveChanges();
+                await _repo.AddPatientAsync(p);
                 Patients.Add(p);
                 Logger.Information($"Добавлен новый пациент: {p.FullName} (Id: {p.Id})");
             }
@@ -123,6 +128,12 @@ namespace DentalClinicApp.ViewModels
 
             if (dlg.ShowDialog() == true)
                 await AddDroppedFiles(dlg.FileNames);
+        }
+
+        private async Task AddDroppedFiles(object? obj)
+        {
+            if (obj is string[] files)
+                await AddDroppedFiles(files);
         }
 
         private async Task AddDroppedFiles(string[] files)
@@ -141,12 +152,30 @@ namespace DentalClinicApp.ViewModels
                     UploadedAt = DateTime.Now
                 };
 
-                _db.PatientPhotos.Add(photo);
+                await _repo.AddPhotoASync(photo);
             }
             Logger.Information($"Загружены фото для пациента Id={_selectedPatient.Id}");
 
-            await _db.SaveChangesAsync();
-            LoadPhotos();
+            await LoadPhotos();
+        }
+
+        public async Task Initialize()
+        {
+            StatusText = "Подключение к БД...";
+            try
+            {
+                await _repo.Connect();
+            }
+            catch (Exception ex)
+            {
+                StatusText = "Нет подключения";
+                Logger.Error(ex, StatusText);
+                return;
+            }
+            StatusText = "Подключено";
+            HasConnection = true;
+
+            await LoadPatients();
         }
     }
 

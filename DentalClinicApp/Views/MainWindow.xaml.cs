@@ -1,5 +1,6 @@
 ﻿using DentalClinicApp.ViewModels;
 using Serilog;
+using System.Threading.Tasks;
 using System.Windows;
 
 namespace DentalClinicApp.Views
@@ -37,6 +38,11 @@ namespace DentalClinicApp.Views
                 ViewModel.DropFilesCommand.Execute(files);
                 Logger.Information($"Фото добавлено через Drag&Drop для пациента Id={ViewModel.SelectedPatient.Id}");
             }
+        }
+
+        public async Task Initialize()
+        {
+            await ViewModel.Initialize();
         }
     }
 }

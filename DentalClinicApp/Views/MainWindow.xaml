@@ -7,7 +7,8 @@
         xmlns:viewModels="clr-namespace:DentalClinicApp.ViewModels"
         xmlns:utils="clr-namespace:DentalClinicApp.Utils"
         mc:Ignorable="d"
-        Title="Стоматология" Height="450" Width="800">
+        Title="Стоматология" Height="450" Width="800"
+        IsEnabled="{Binding HasConnection}">
     <Window.Resources>
         <utils:NullToBoolConverter x:Key="NullToBoolConverter"/>
     </Window.Resources>
@@ -44,6 +45,11 @@
                 </Button.ToolTip>
             </Button>
         </ToolBar>
+        <StatusBar DockPanel.Dock="Bottom" >
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusText}" />
+            </StatusBarItem>
+        </StatusBar>
     <Grid Margin="10">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="2*"/>

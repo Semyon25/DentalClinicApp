@@ -23,8 +23,8 @@ namespace DentalClinicApp
                 .ConfigureServices((ctx, services) =>
                 {
                     var connStr = ctx.Configuration.GetConnectionString("DefaultConnection");
-                    services.AddDbContext<AppDbContext>(opt =>
-                        opt.UseNpgsql(connStr));
+                    services.AddDbContext<AppDbContext>(opt => opt.UseNpgsql(connStr));
+                    services.AddScoped<PatientRepository>();
 
                     var imgPath = ctx.Configuration["ImageBasePath"] ?? "./data";
                     services.AddSingleton(new ImageService(imgPath));
@@ -46,6 +46,7 @@ namespace DentalClinicApp
                 DataContext = _host.Services.GetRequiredService<MainViewModel>()
             };
             mainWindow.Show();
+            await mainWindow.Initialize();
             base.OnStartup(e);
 
             Log.Information("Приложение запущено");

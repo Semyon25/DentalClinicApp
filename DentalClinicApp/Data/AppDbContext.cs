@@ -12,8 +12,12 @@ namespace DentalClinicApp.Data
             : base(options) 
         {
             AppContext.SetSwitch("Npgsql.EnableLegacyTimestampBehavior", true);
-            Database.EnsureCreated();
         }
+        public bool EnsureCreated()
+        {
+            return Database.EnsureCreated();
+        }
+
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<Patient>()
